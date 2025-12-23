@@ -48,7 +48,7 @@ export default function LoginPage() {
               Correo
             </label>
             <input
-              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+              className="w-full text-gray-700 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -60,7 +60,7 @@ export default function LoginPage() {
               Contraseña
             </label>
             <input
-              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+              className="w-full text-gray-700 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

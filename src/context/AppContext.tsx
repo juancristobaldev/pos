@@ -1,5 +1,5 @@
-"use client";
 
+"use client";
 import {
   createContext,
   useContext,
@@ -10,12 +10,32 @@ import {
 import Cookies from "js-cookie";
 import { jwtDecode } from "jwt-decode";
 import { useRouter } from "next/navigation";
+import { gql, useLazyQuery } from "@apollo/client";
+
+export const GET_USER = gql`
+  query GetUser($userId: String!) {
+    getUser(userId: $userId) {
+      success
+      errors
+      user {
+        id
+        email
+        role
+        businessId
+      }
+    }
+  }
+`;
+
+
+
+
 
 interface User {
-  sub: string; // ID del usuario
-  businessId: string; // ID del negocio
-  role: string;
+  id: string;
   email: string;
+  role: string;
+  businessId: string;
 }
 
 interface CartItem {
@@ -45,33 +65,43 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [tableId, setTableId] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
 
-  // Verificar sesión al cargar
-  useEffect(() => {
-    const token = Cookies.get("@token");
-    if (token) {
-      try {
-        const decoded: any = jwtDecode(token);
-        // Validamos que el token tenga lo necesario
-        if (decoded.sub && decoded.businessId) {
-          setUser(decoded);
-        } else {
-          console.warn("Token incompleto (falta sub o businessId)");
-        }
-      } catch {
-        Cookies.remove("@token");
+  const [getUser] = useLazyQuery(GET_USER, {
+    fetchPolicy: "network-only",
+    onCompleted: (data) => {
+      if (data?.getUser?.success) {
+        setUser(data.getUser.user);
+      } else {
+        logout();
       }
+    },
+  });
+
+  // 🔁 Rehidratar sesión
+  useEffect(() => {
+    const token = Cookies.get("token");
+    if (!token) return;
+
+    try {
+      const decoded: any = jwtDecode(token);
+
+      console.log(decoded)
+      if (decoded) {
+        getUser({ variables: { userId: decoded.id } });
+      }
+    } catch {
+      logout();
     }
   }, []);
 
   const login = (token: string) => {
-    Cookies.set("@token", token);
+    Cookies.set("token", token);
     const decoded: any = jwtDecode(token);
-    setUser(decoded);
+    getUser({ variables: { userId: decoded.id } });
     router.push("/waiter/tables");
   };
 
   const logout = () => {
-    Cookies.remove("@token");
+    Cookies.remove("token");
     setUser(null);
     router.push("/login");
   };
@@ -81,7 +111,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const exists = prev.find((p) => p.productId === product.id);
       if (exists) {
         return prev.map((p) =>
-          p.productId === product.id ? { ...p, quantity: p.quantity + 1 } : p
+          p.productId === product.id
+            ? { ...p, quantity: p.quantity + 1 }
+            : p
         );
       }
       return [

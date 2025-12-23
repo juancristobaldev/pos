@@ -22,13 +22,13 @@ export default function MenuPage() {
   const [createOrder, { loading: sending }] = useMutation(CREATE_ORDER);
 
   const handleOrder = async () => {
-    if (!tableId || !user?.sub) return;
+    if (!tableId || !user?.id) return;
     try {
       await createOrder({
         variables: {
           input: {
             tableId,
-            userId: user.sub,
+            userId: user.id,
             items: cart.map((i) => ({
               productId: i.productId,
               quantity: i.quantity,

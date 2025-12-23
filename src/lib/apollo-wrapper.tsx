@@ -13,7 +13,7 @@ const httpLink = new HttpLink({
 
 // 2. Middleware para inyectar el Token JWT
 const authLink = setContext((_, { headers }) => {
-  const token = Cookies.get("@token");
+  const token = Cookies.get("token");
   return {
     headers: {
       ...headers,

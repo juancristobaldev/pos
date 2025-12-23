@@ -42,8 +42,11 @@ export const CREATE_ORDER = gql`
   mutation CreateOrder($input: CreateOrderInput!) {
     createOrder(input: $input) {
       id
+      orders {
+       id
       status
       total
+      }
     }
   }
 `;

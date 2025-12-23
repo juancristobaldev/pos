@@ -1,112 +1,239 @@
-"use client";
+  "use client";
 
-import { useState } from "react";
-import { useQuery } from "@apollo/client";
+  import { useEffect, useState } from "react";
+  import { useQuery, useMutation, gql } from "@apollo/client";
+  import { LogOut } from "lucide-react";
 
-import { useRouter } from "next/navigation";
-import { LogOut } from "lucide-react";
-import { useApp } from "@/src/context/AppContext";
-import { GET_TABLES } from "@/src/graphql/queries";
+  import { useApp } from "@/src/context/AppContext";
+  import TableItem from "@/src/components/TableItem";
+  import TableActionModal from "@/src/components/modals/TableActionModal";
+  import TableOrderModal from "@/src/components/TableOrder";
+  import { Table } from "@/src/entity/entitys";
 
-export default function TablesPage() {
-  const router = useRouter();
-  const { user, setTableId, logout } = useApp();
-  const [floorIdx, setFloorIdx] = useState(0);
 
-  // Consulta poll cada 5 seg para ver estado de mesas
-  const { data, loading, error } = useQuery(GET_TABLES, {
-    variables: { id: user?.businessId },
-    skip: !user?.businessId,
-    pollInterval: 5000,
-  });
 
-  if (loading)
-    return (
-      <div className="flex h-screen items-center justify-center text-blue-600 font-bold">
-        Cargando salón...
-      </div>
-    );
-  if (error)
-    return (
-      <div className="p-10 text-red-500 text-center">
-        Error: {error.message}
-      </div>
-    );
+  /* =======================
+    GraphQL
+  ======================= */
 
-  const floors = data?.business?.floors || [];
-  const currentFloor = floors[floorIdx];
+  export const CHANGE_TABLE_STATUS = gql`
+    mutation ChangeTableStatus($input: ChangeTableStatusInput!) {
+      changeTableStatus(input: $input) {
+        id
+        status
+        hasActiveOrder
+      }
+    }
+  `;
 
-  return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Header */}
-      <div className="bg-white p-4 flex justify-between items-center shadow-sm z-10 sticky top-0">
-        <div>
-          <h1 className="font-bold text-xl text-gray-900">{user?.role}</h1>
-          <p className="text-xs text-gray-500">Selecciona una mesa</p>
+  export const GET_FLOORS = gql`
+    query GetFloors($businessId: String!) {
+      getFloors(businessId: $businessId) {
+        id
+        name
+        tables {
+          id
+          name
+          status
+          capacity
+          shape
+          coordX
+          coordY
+          hasActiveOrder
+          orders {
+            id
+            status
+            subtotal
+            tax
+            discount
+            tip
+            total
+            items {
+              id
+              quantity
+                product{
+                  name
+                  price
+                }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  /* =======================
+    Page
+  ======================= */
+
+  export default function TablesPage() {
+    const { user, logout } = useApp();
+
+    const [floorIdx, setFloorIdx] = useState(0);
+    const [selectedTable, setSelectedTable] = useState<Table | null>(null);
+    const [openOrderModal, setOpenOrderModal] = useState(false);
+
+    const { data, loading, error } = useQuery(GET_FLOORS, {
+      variables: { businessId: user?.businessId },
+      skip: !user?.businessId,
+    });
+
+    const [changeTableStatus] = useMutation(CHANGE_TABLE_STATUS);
+
+    const handleCloseActionModal = () => {
+      setSelectedTable(null);
+    };
+
+    const handleTakeOrder = () => {
+      if (!selectedTable) return;
+
+      setOpenOrderModal(true);
+
+    };
+
+    const [floors,setFloors] = useState<any[]>([]);
+    useEffect(() => {
+      if (!loading && data?.getFloors) {
+        setFloors(data.getFloors);
+    
+        if (selectedTable) {
+          // Buscar la mesa actual en los pisos actualizados
+          let updatedTable: Table | undefined = undefined;
+          for (const floor of data.getFloors) {
+            const table = floor.tables.find((t: Table) => t.id === selectedTable.id);
+            if (table) {
+              updatedTable = table;
+              break;
+            }
+          }
+    
+          if (updatedTable) {
+            setSelectedTable(updatedTable); // Actualiza selectedTable con los datos más recientes
+          }
+        }
+      }
+    }, [data, loading, selectedTable]);
+
+    if (loading) {
+      return (
+        <div className="flex h-screen items-center justify-center font-bold text-blue-600">
+          Cargando salón...
         </div>
-        <button
-          onClick={logout}
-          className="p-2 bg-red-50 text-red-500 rounded-full hover:bg-red-100"
-        >
-          <LogOut size={20} />
-        </button>
-      </div>
+      );
+    }
 
-      {/* Tabs de Pisos */}
-      {floors.length > 0 ? (
-        <>
-          <div className="flex gap-3 p-4 overflow-x-auto bg-white border-b">
-            {floors.map((f: any, idx: number) => (
-              <button
-                key={f.id}
-                onClick={() => setFloorIdx(idx)}
-                className={`px-5 py-2 rounded-full font-medium transition-all shadow-sm ${
-                  idx === floorIdx
-                    ? "bg-blue-600 text-white ring-2 ring-blue-300"
-                    : "bg-white text-gray-600 border border-gray-200"
-                }`}
-              >
-                {f.name}
-              </button>
-            ))}
+    if (error) {
+      return (
+        <div className="p-10 text-center text-red-500">
+          Error: {error.message}
+        </div>
+      );
+    }
+
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+
+        {/* ===== Modales ===== */}
+
+      {selectedTable !== null && (
+        
+        <TableActionModal
+        userId={user?.id}
+        businessId={user?.businessId}
+        orders={selectedTable.orders ? selectedTable.orders : []}
+        open={!!selectedTable}
+        tableId={selectedTable?.id}
+        tableName={selectedTable?.name}
+        status={selectedTable?.status}
+        hasOrder={Boolean(selectedTable?.orders?.length)}
+        onClose={handleCloseActionModal}
+        onChangeStatus={(status) => {
+          if (!selectedTable) return;
+
+          changeTableStatus({
+            variables: {
+              input: {
+                tableId: selectedTable.id,
+                newStatus: status,
+              },
+            },
+          });
+
+          handleCloseActionModal();
+        }}
+        onTakeOrder={handleTakeOrder}
+      />
+
+      )}
+          {selectedTable !== null && 
+          <TableOrderModal
+          open={openOrderModal}
+          onClose={() => setOpenOrderModal(false)}
+          tableId={selectedTable?.id}
+          businessId={user?.businessId}
+          userId={user?.id}
+        />
+        }
+
+        {/* ===== Header ===== */}
+
+        <div className="bg-white p-4 flex justify-between items-center shadow-sm sticky top-0 z-10">
+          <div>
+            <h1 className="font-bold text-xl text-gray-900">{user?.role}</h1>
+            <p className="text-xs text-gray-500">Selecciona una mesa</p>
           </div>
 
-          {/* Grid de Mesas */}
-          <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 flex-1 content-start overflow-y-auto">
-            {currentFloor?.tables?.map((t: any) => (
-              <button
-                key={t.id}
-                onClick={() => {
-                  setTableId(t.id);
-                  router.push("/waiter/menu");
-                }}
-                className={`aspect-square rounded-2xl flex flex-col items-center justify-center shadow-md transition-transform active:scale-95 relative overflow-hidden ${
-                  t.status === "OCCUPIED"
-                    ? "bg-red-500 text-white"
-                    : "bg-white border-2 border-green-400 text-gray-800"
-                }`}
-              >
-                <span className="text-4xl font-black">
-                  {t.name.replace("Mesa ", "")}
-                </span>
-                <span
-                  className={`text-xs uppercase mt-2 font-bold px-2 py-1 rounded ${
-                    t.status === "OCCUPIED"
-                      ? "bg-red-700"
-                      : "bg-green-100 text-green-700"
+          <button
+            onClick={logout}
+            className="p-2 bg-red-50 text-red-500 rounded-full hover:bg-red-100"
+          >
+            <LogOut size={20} />
+          </button>
+        </div>
+
+        {/* ===== Tabs de Pisos ===== */}
+
+        {floors.length > 0 ? (
+          <>
+            <div className="flex gap-3 p-4 overflow-x-auto bg-white border-b">
+              {floors.map((floor: any, idx: number) => (
+                <button
+                  key={floor.id}
+                  onClick={() => setFloorIdx(floor.id)}
+                  className={`px-5 py-2 rounded-full font-medium transition-all ${
+                    idx === floorIdx
+                      ? "bg-blue-600 text-white ring-2 ring-blue-300"
+                      : "bg-white text-gray-600 border border-gray-200"
                   }`}
                 >
-                  {t.status === "OCCUPIED" ? "Ocupada" : "Libre"}
-                </span>
-              </button>
-            ))}
+                  {floor.name}
+                </button>
+              ))}
+            </div>
+
+            {/* ===== Plano ===== */}
+
+            <div className="relative flex-1 overflow-auto bg-gray-100">
+              {floors[floorIdx]?.tables?.map((table: Table  ) => (
+                <TableItem
+                  table={table}
+                  key={table.id}
+                  id={table.id}
+                  name={table.name}
+                  x={table.coordX}
+                  y={table.coordY}
+                  shape={table.shape}
+                  status={table.status}
+                  onSelectTable={() => setSelectedTable(table)}
+                />
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="p-10 text-center text-gray-500">
+            No hay pisos configurados.
           </div>
-        </>
-      ) : (
-        <div className="p-10 text-center text-gray-500">
-          No hay pisos configurados en el sistema.
-        </div>
-      )}
-    </div>
-  );
-}
+        )}
+      </div>
+    );
+  }
